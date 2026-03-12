@@ -13,14 +13,12 @@ The goal is not just to find rule violations, but to diagnose which layer is mis
 ## Step 0: Assess project tier
 
 ```bash
-# Count source files, languages, contributors
-find . -type f \( -name "*.rs" -o -name "*.ts" -o -name "*.py" -o -name "*.go" -o -name "*.lua" \) \
-  ! -path "*/node_modules/*" ! -path "*/.git/*" | wc -l
-
-git log --format="%ae" 2>/dev/null | sort -u | wc -l   # unique contributors
-ls .github/workflows/*.yml 2>/dev/null | wc -l          # CI workflows
-ls .claude/skills/ 2>/dev/null | wc -l                  # existing skills
-wc -l CLAUDE.md 2>/dev/null                             # current CLAUDE.md size
+P=$(pwd)
+echo "source_files: $(find "$P" -type f \( -name "*.rs" -o -name "*.ts" -o -name "*.py" -o -name "*.go" -o -name "*.lua" \) -not -path "*/.git/*" -not -path "*/node_modules/*" | wc -l)"
+echo "contributors: $(git -C "$P" log --format='%ae' 2>/dev/null | sort -u | wc -l)"
+echo "ci_workflows:  $(ls "$P/.github/workflows/"*.yml 2>/dev/null | wc -l)"
+echo "skills:        $(ls "$P/.claude/skills/" 2>/dev/null | wc -l)"
+echo "claude_md_lines: $(wc -l < "$P/CLAUDE.md" 2>/dev/null)"
 ```
 
 Use this rubric to pick the audit tier before proceeding:
@@ -36,15 +34,16 @@ Use this rubric to pick the audit tier before proceeding:
 ## Step 1: Collect configuration snapshot
 
 ```bash
-PROJECT_DIR=$(pwd)
+P=$(pwd)
+SETTINGS="$P/.claude/settings.local.json"
 
-echo "=== CLAUDE.md (global) ===" && cat ~/.claude/CLAUDE.md
-echo "=== CLAUDE.md (local) ===" && cat "$PROJECT_DIR/CLAUDE.md" 2>/dev/null || echo "(none)"
-echo "=== rules/ ===" && find "$PROJECT_DIR/.claude/rules" -name "*.md" 2>/dev/null | while read f; do echo "--- $f ---"; cat "$f"; done
-echo "=== skill descriptions ===" && grep -r "^description:" "$PROJECT_DIR/.claude/skills" ~/.claude/skills 2>/dev/null
-echo "=== hooks ===" && python3 -m json.tool "$PROJECT_DIR/.claude/settings.local.json" 2>/dev/null | grep -A 30 '"hooks"'
-echo "=== MCP servers ===" && python3 -m json.tool "$PROJECT_DIR/.claude/settings.local.json" 2>/dev/null | grep -A 10 '"enabledMcp"'
-echo "=== allowedTools count ===" && python3 -m json.tool "$PROJECT_DIR/.claude/settings.local.json" 2>/dev/null | grep -c "Bash\|mcp__"
+echo "=== CLAUDE.md (global) ===" ; cat ~/.claude/CLAUDE.md
+echo "=== CLAUDE.md (local) ===" ; cat "$P/CLAUDE.md" 2>/dev/null || echo "(none)"
+echo "=== rules/ ===" ; find "$P/.claude/rules" -name "*.md" 2>/dev/null | while IFS= read -r f; do echo "--- $f ---"; cat "$f"; done
+echo "=== skill descriptions ===" ; grep -r "^description:" "$P/.claude/skills" ~/.claude/skills 2>/dev/null
+echo "=== hooks ===" ; python3 -c "import json,sys; d=json.load(open('$SETTINGS')); print(json.dumps(d.get('hooks',{}), indent=2))" 2>/dev/null
+echo "=== MCP ===" ; python3 -c "import json; d=json.load(open('$SETTINGS')); print(d.get('enabledMcpjsonServers',[]))" 2>/dev/null
+echo "=== allowedTools count ===" ; python3 -c "import json; d=json.load(open('$SETTINGS')); print(len(d.get('permissions',{}).get('allow',[])))" 2>/dev/null
 ```
 
 ## Step 2: Collect conversation evidence
